@@ -1,7 +1,15 @@
+# Start from a python image
 FROM python:3.9-alpine
 
-ADD cliente.py .
-RUN pip install --no-cache-dir --upgrade pip
-RUN pip install pymemcache
+# Create a new directory to allocate our API
+WORKDIR /my_api
 
-CMD [ "python", "./cliente.py" ]
+# Copy requirements and install
+COPY ./requirements.txt /my_api/requirements.txt
+RUN pip install --no-cache-dir --upgrade -r /my_api/requirements.txt
+
+# Copy API project
+COPY ./app /my_api/app
+
+# Run uvicorn server with our API on port 80
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "80"]

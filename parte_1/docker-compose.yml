@@ -1,7 +1,9 @@
 version: '2.4'
 services:
-  client:
+  api:
     build: .
+    ports:
+      - "80:80"
     depends_on:
       memcached:
         condition: service_healthy

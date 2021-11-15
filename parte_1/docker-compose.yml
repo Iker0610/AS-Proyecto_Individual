@@ -1,0 +1,16 @@
+version: '2.4'
+services:
+  client:
+    build: .
+    depends_on:
+      memcached:
+        condition: service_healthy
+
+  memcached:
+    image: memcached:alpine
+    ports:
+      - "11211:11211"
+    healthcheck:
+      test: echo stats | nc memcached 11211
+      interval: 10s
+      retries: 60

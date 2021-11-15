@@ -15,19 +15,61 @@ Ephemeral TODO List, save your todo task as long as the server lives.
 
 You will be able to:
 
-* **Create list** (_not implemented_).
-* **Add tasks to existing list** (_not implemented_).
-* **Consult list's tasks** (_not implemented_).
+* **Create list:** Define a list with a new unique name and an optional description..
+* **Consult list's info and tasks:** Get your list data and assigned tasks. You can choose between getting a list of task names or a list with each task's data.
+* **Delete a list:** Delete an existing list and every assigned task to that list.
 
 ## Task
 
 You will be able to:
 
-* **Create task** (_not implemented_).
-* **Read task** (_not implemented_).
+* **Create task in an existing list:** (_not implemented_).
+* **Get task data:** (_not implemented_).
+* **Edit task data:** (_not implemented_).
+* **Delete a task:** (_not implemented_).
 """
 
-MEMCACHED_IP = '127.0.0.1'
+# ---------------------------------------------------------
+# Memcached
+# ---------------------------------------------------------
+MEMCACHED_IP = ('memcached', 11211)
+
+memcached_db = Client(MEMCACHED_IP)
+
+
+def delete_tasks(list_id: str, tasks: List[str]):
+    for task in tasks:
+        memcached_db.delete(f'task-key_{list_id}_{task}')
+
+
+# ---------------------------------------------------------
+# API Aplication
+# ---------------------------------------------------------
+
+app = FastAPI(
+    title="Ephemeral TODO List",
+    description=description,
+    version="2.0.1",
+    contact={
+        "name": "Iker de la Iglesia Martínez",
+        "email": "idelaiglesia004@ikasle.ehu.eus",
+    },
+    license_info={
+        "name": "Apache 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0.html",
+    },
+)
+
+
+@app.on_event("startup")
+async def startup():
+    global memcached_db
+    memcached_db = Client(MEMCACHED_IP)
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    memcached_db.close()
 
 
 # ---------------------------------------------------------
@@ -71,48 +113,6 @@ class TaskListInDB(TaskList):
 
 
 # ---------------------------------------------------------
-# Memcached
-# ---------------------------------------------------------
-
-memcached_db = Client(MEMCACHED_IP)
-
-
-def delete_tasks(list_id: str, tasks: List[str]):
-    for task in tasks:
-        memcached_db.delete(f'task-key_{list_id}_{task}')
-
-
-# ---------------------------------------------------------
-# Server
-# ---------------------------------------------------------
-
-app = FastAPI(
-    title="Ephemeral TODO List",
-    description=description,
-    version="0.0.1",
-    contact={
-        "name": "Iker de la Iglesia Martínez",
-        "email": "idelaiglesia004@ikasle.ehu.eus",
-    },
-    license_info={
-        "name": "Apache 2.0",
-        "url": "https://www.apache.org/licenses/LICENSE-2.0.html",
-    },
-)
-
-
-@app.on_event("startup")
-async def startup():
-    global memcached_db
-    memcached_db = Client(MEMCACHED_IP)
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    memcached_db.close()
-
-
-# ---------------------------------------------------------
 # API
 # ---------------------------------------------------------
 
@@ -146,7 +146,7 @@ async def get_list(list_name: str, get_task_data: Optional[bool] = False):
 
 
 @app.delete("/todo_lists/{list_name}",
-            response_model=create_model('DeleteListResponse', message=(str, ...), list_name=(str, ...), deleted_tasks=(str, ...)),
+            response_model=create_model('DeleteListResponse', message=(str, ...), list_name=(str, ...), deleted_tasks=(List[str], ...)),
             status_code=status.HTTP_200_OK,
             tags=["Lists"])
 async def delete_list(list_name: str):
@@ -172,20 +172,33 @@ async def delete_list(list_name: str):
 
 @app.post("/todo_lists/{list_name}", response_model=TaskInDB, status_code=status.HTTP_201_CREATED, tags=["Tasks"])
 async def add_task(list_name: str, task_data: Task):
+    # Check if list exists
+    if not (list_data := memcached_db.get(f'task-list-key_{list_name}')):
+        raise HTTPException(status_code=404, detail=f"List {list_name} not found")
+
+    # Check if task already exists
     if memcached_db.get(f'task-key_{list_name}_{task_data.name}'):
         raise HTTPException(status_code=403,
                             detail=f"There's already a task with name {task_data.name} on list {list_name}.\n"
                                    f"Use PUT method instead to edit task data.")
+
+    # Generate task
     task_data = TaskInDB(assigned_list=list_name, **dict(task_data))
     memcached_db.set(f'task-key_{list_name}_{task_data.name}', task_data.json())
+
+    # Add task to list data and uodate
+    list_data = TaskListInDB(**json.loads(list_data))
+    list_data.tasks.append(task_data.name)
+    memcached_db.set(f'task-list-key_{list_name}', list_data.json())
+
     return task_data
 
 
-@app.put("/todo_lists/{list_name}/{task_id}", response_model=TaskInDB, status_code=status.HTTP_200_OK, tags=["Tasks"])
-async def edit_task(list_name: str, task_id: str, updated_task_data: UpdatedTask):
+@app.put("/todo_lists/{list_name}/{task_name}", response_model=TaskInDB, status_code=status.HTTP_200_OK, tags=["Tasks"])
+async def edit_task(list_name: str, task_name: str, updated_task_data: UpdatedTask):
     # Check if task exists
-    if not (task_data := memcached_db.get(f'task-key_{list_name}_{task_id}')):
-        raise HTTPException(status_code=404, detail=f"Task {task_id} on list {list_name} not found.")
+    if not (task_data := memcached_db.get(f'task-key_{list_name}_{task_name}')):
+        raise HTTPException(status_code=404, detail=f"Task {task_name} on list {list_name} not found.")
 
     # Get original data and updated values
     task_data = json.loads(task_data)
@@ -194,27 +207,38 @@ async def edit_task(list_name: str, task_id: str, updated_task_data: UpdatedTask
     # Update data
     task_data.update(updated_task_data)
     task_data = TaskInDB(**task_data)  # Convert to model
-    memcached_db.set(f'task-key_{list_name}_{task_id}', task_data.json())
+    memcached_db.set(f'task-key_{list_name}_{task_name}', task_data.json())
     return task_data
 
 
-@app.get("/todo_lists/{list_name}/{task_id}", response_model=TaskInDB, status_code=status.HTTP_200_OK, tags=["Tasks"])
-async def get_task(list_name: str, task_id: str):
-    if not (task_data := memcached_db.get(f'task-key_{list_name}_{task_id}')):
-        raise HTTPException(status_code=404, detail=f"Task {task_id} on list {list_name} not found.")
-    return TaskInDB(**task_data)
+@app.get("/todo_lists/{list_name}/{task_name}", response_model=TaskInDB, status_code=status.HTTP_200_OK, tags=["Tasks"])
+async def get_task(list_name: str, task_name: str):
+    if not (task_data := memcached_db.get(f'task-key_{list_name}_{task_name}')):
+        raise HTTPException(status_code=404, detail=f"Task {task_name} on list {list_name} not found.")
+    return TaskInDB(**json.loads(task_data))
 
 
-@app.delete("/todo_lists/{list_name}/{task_id}",
+@app.delete("/todo_lists/{list_name}/{task_name}",
             response_model=create_model('DeleteTaskResponse', message=(str, ...), task_name=(str, ...), list_name=(str, ...)),
             status_code=status.HTTP_200_OK,
             tags=["Tasks"])
-async def delete_task(list_name: str, task_id: str):
-    # Delete and check if task exists
-    if not memcached_db.delete(f'task-key_{list_name}_{task_id}', noreply=False):
-        raise HTTPException(status_code=404, detail=f"Task {task_id} on list {list_name} not found.")
+async def delete_task(list_name: str, task_name: str):
+    # Check if list exists
+    if not (list_data := memcached_db.get(f'task-list-key_{list_name}')):
+        raise HTTPException(status_code=404, detail=f"List {list_name} not found")
 
-    # Inform
-    return {'message': f'Task {task_id} on list {list_name} deleted successfully.',
-            'task_name': task_id,
+    # Delete and check if task exists
+    if not memcached_db.delete(f'task-key_{list_name}_{task_name}', noreply=False):
+        raise HTTPException(status_code=404, detail=f"Task {task_name} on list {list_name} not found.")
+
+    # Delete task to list data and uodate
+    list_data = TaskListInDB(**json.loads(list_data))
+    try:
+        list_data.tasks.remove(task_name)
+        memcached_db.set(f'task-list-key_{list_name}', list_data.json())
+    except ValueError:
+        pass
+
+    return {'message': f'Task {task_name} on list {list_name} deleted successfully.',
+            'task_name': task_name,
             'list_name': list_name}

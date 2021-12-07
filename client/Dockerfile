@@ -11,5 +11,8 @@ RUN pip install --no-cache-dir --upgrade -r /my_api/requirements.txt
 # Copy API project
 COPY app /my_api/app
 
+# Set default memcached database IP
+ENV MEMCACHED_IP=localhost
+
 # Run uvicorn server with our API on port 80
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "80"]

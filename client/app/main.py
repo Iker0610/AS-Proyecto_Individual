@@ -2,6 +2,7 @@ import json
 from datetime import datetime
 from enum import Enum
 from typing import Optional, List, Union
+import os
 
 from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel, Field, create_model
@@ -32,7 +33,7 @@ You will be able to:
 # ---------------------------------------------------------
 # Memcached
 # ---------------------------------------------------------
-MEMCACHED_IP = ('memcached', 11211)
+MEMCACHED_IP = (os.environ['MEMCACHED_IP'], 11211)
 
 memcached_db = Client(MEMCACHED_IP)
 

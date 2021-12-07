@@ -1,7 +1,7 @@
 version: '2.4'
 services:
   api:
-    build: .
+    image: iker0610/as-client-api
     ports:
       - "80:80"
     depends_on:

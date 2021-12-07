@@ -127,7 +127,7 @@ async def root():
 @app.post("/todo_lists/", response_model=TaskListInDB, status_code=status.HTTP_201_CREATED, tags=["Lists"])
 async def create_list(data: TaskList):
     if memcached_db.get(f'task-list-key_{data.name}'):
-        raise HTTPException(status_code=403, detail=f"There's already a list with name {data.name}")
+        raise HTTPException(status_code=409, detail=f"There's already a list with name {data.name}")
     data = TaskListInDB(**dict(data))
     memcached_db.set(f'task-list-key_{data.name}', data.json())
     return data
@@ -178,7 +178,7 @@ async def add_task(list_name: str, task_data: Task):
 
     # Check if task already exists
     if memcached_db.get(f'task-key_{list_name}_{task_data.name}'):
-        raise HTTPException(status_code=403,
+        raise HTTPException(status_code=409,
                             detail=f"There's already a task with name {task_data.name} on list {list_name}.\n"
                                    f"Use PUT method instead to edit task data.")
 

@@ -6,6 +6,17 @@ services:
       - MEMCACHED_IP=memcached
     ports:
       - "80:80"
+    volumes:
+      # Volume
+      - type: volume
+        source: backup
+        target: /client_api/backup
+
+      # Bind Mount
+      #- type: bind
+      #  source: ./backup
+      #  target: /client_api/backup
+
     depends_on:
       memcached:
         condition: service_healthy
@@ -18,3 +29,6 @@ services:
       test: echo stats | nc memcached 11211
       interval: 10s
       retries: 60
+
+volumes:
+  backup:

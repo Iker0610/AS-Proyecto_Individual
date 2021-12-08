@@ -1,0 +1,19 @@
+[
+  {
+    "name": "lista prueba",
+    "description": null,
+    "list_id": "lista_prueba",
+    "creation_date": "08-Dec-2021 (23:32:43)",
+    "tasks": [
+      {
+        "name": "task prueba",
+        "description": "Prueba",
+        "status": "Assigned",
+        "due_date": null,
+        "task_id": "task_prueba",
+        "assigned_list": "lista_prueba",
+        "creation_date": "08-Dec-2021 (23:34:14)"
+      }
+    ]
+  }
+]

@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: client-service
+  labels:
+    app: api
+    role: client
+spec:
+  type: LoadBalancer
+  selector:
+    app: api
+    role: client
+  ports:
+    - port: 80
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: client-api
+spec:
+  selector:
+    matchLabels:
+      app: api
+      role: client
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: api
+        role: client
+    spec:
+      initContainers:
+        - name: memcached-checker
+          image: curlimages/curl
+          command: [ 'sh', '-c' ]
+          args: [" curl memcached-db-service:11211&>/dev/null ; until [ $? -eq 52 ] ; do echo 'Waiting for the database...'; sleep 1 ; curl memcached-db-service:11211&>/dev/null ; done"]
+      containers:
+        - name: client-api
+          image: iker0610/as-client-api
+          env:
+            - name: MEMCACHED_IP
+              value: memcached-db-service
+          ports:
+            - containerPort: 80

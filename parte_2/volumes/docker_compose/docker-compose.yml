@@ -5,7 +5,7 @@ services:
     environment:
       - MEMCACHED_IP=memcached
     ports:
-      - "80:80"
+      - "8080:80"
     volumes:
       # Volume
       - type: volume
@@ -28,7 +28,6 @@ services:
     healthcheck:
       test: echo stats | nc memcached 11211
       interval: 10s
-      retries: 60
 
 volumes:
   backup:
